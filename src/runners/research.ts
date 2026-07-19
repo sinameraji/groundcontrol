@@ -87,7 +87,7 @@ export async function runResearchMission(
   }
 
   await ctx.setStatus("digging in — this can take a few minutes");
-  const run = await sandbox.execStreaming(
+  const run = await sandbox.runLong(
     opencodeRunCommand({ dir: "/workspace", model, taskFile })
   );
   const cleanStdout = cleanOutput(run.stdout);

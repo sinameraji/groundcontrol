@@ -1,5 +1,6 @@
 import { HotcellClient } from "@hotcell/sdk";
 import type { CreateOptions, Sandbox, SandboxMetrics } from "@hotcell/sdk";
+import { randomBytes } from "node:crypto";
 import type { Config } from "./types.js";
 
 /**
@@ -26,6 +27,16 @@ export interface SandboxHandle {
     cmd: string,
     onLine?: (line: string) => void
   ): Promise<ExecResult>;
+  /**
+   * Run a LONG command as a detached process polled with short execs — the
+   * transport-safe path for anything that can stay silent for minutes:
+   * Node's fetch aborts a streaming exec after ~5 min without a byte
+   * ("TypeError: terminated"), killing the mission while the process lives
+   * on in the sandbox. Polling also keeps the sandbox visibly active, so
+   * the idle reaper can't pause it mid-run. Result stdout is the process's
+   * combined stdout+stderr log.
+   */
+  runLong(cmd: string, opts?: { pollMs?: number }): Promise<ExecResult>;
   writeFile(path: string, content: string): Promise<void>;
   readFile(path: string): Promise<string>;
   /** Binary-safe read (base64 over exec if the SDK read is text-only). */
@@ -178,6 +189,44 @@ function wrapSandbox(sandbox: Sandbox): SandboxHandle {
       return { exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr };
     },
 
+    async runLong(
+      cmd: string,
+      opts?: { pollMs?: number }
+    ): Promise<ExecResult> {
+      const tag = randomBytes(4).toString("hex");
+      const log = `/workspace/.mission/run-${tag}.log`;
+      const done = `/workspace/.mission/run-${tag}.done`;
+      const start = await sandbox.exec(
+        `mkdir -p /workspace/.mission && ` +
+          `nohup sh -c ${shellQuote(`(${cmd}) > ${log} 2>&1; echo $? > ${done}`)} ` +
+          `>/dev/null 2>&1 &`
+      );
+      if (start.exitCode !== 0) {
+        return {
+          exitCode: start.exitCode,
+          stdout: start.stdout,
+          stderr: start.stderr,
+        };
+      }
+      const pollMs = opts?.pollMs ?? 10_000;
+      // The engine's mission timeout bounds this loop; cancel/timeout
+      // destroys the sandbox, which makes the next poll throw.
+      for (;;) {
+        await sleep(pollMs);
+        const probe = await sandbox.exec(`cat ${done} 2>/dev/null || true`);
+        const code = probe.stdout.trim();
+        if (code !== "") {
+          const out = await sandbox.exec(`cat ${log} 2>/dev/null || true`);
+          const parsed = parseInt(code, 10);
+          return {
+            exitCode: Number.isFinite(parsed) ? parsed : -1,
+            stdout: out.stdout,
+            stderr: "",
+          };
+        }
+      }
+    },
+
     async execStreaming(
       cmd: string,
       onLine?: (line: string) => void
@@ -232,6 +281,10 @@ function wrapSandbox(sandbox: Sandbox): SandboxHandle {
       return sandbox.destroy();
     },
   };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** POSIX single-quote escaping: ' → '\'' , wrapped in single quotes. */

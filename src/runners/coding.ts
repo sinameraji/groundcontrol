@@ -138,7 +138,7 @@ export async function runCodingMission(
     .catch(() => {});
 
   await ctx.setStatus("working on it — this can take a few minutes");
-  const run = await sandbox.execStreaming(
+  const run = await sandbox.runLong(
     opencodeRunCommand({ dir: repoDir, model, taskFile })
   );
   const cleanStdout = cleanOutput(run.stdout);
