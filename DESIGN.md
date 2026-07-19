@@ -28,11 +28,16 @@ Serve), and **only the owner's Discord user id is obeyed**.
    uses `/code` · `/research`. Non-owner and bot-authored messages are ignored.
 2. The engine creates a mission: id `m-YYYYMMDD-xxxx`, a folder
    `<ARTIFACTS_ROOT>/<id>/`, a `state.json`, and a Discord thread spawned from
-   the request message. All later output lands in that thread.
+   the request message — **named after the ask**, not the id (the id lives in
+   `-#` message subtext; Discord is a conversation, not a terminal). Plain
+   greetings ("hello", "thanks") get a conversational reply and never spawn a
+   mission.
 3. The mission enters a concurrency-capped queue (`MAX_CONCURRENT_MISSIONS`);
-   if it can't start immediately the bot replies "queued (#N in line)".
-4. A runner executes it inside a fresh hotcell sandbox (below). Status lines
-   ("sandbox ready", "agent working…") are posted to the thread as it goes.
+   if it can't start immediately the bot replies with its place in line.
+4. A runner executes it inside a fresh hotcell sandbox (below). Progress is a
+   **single self-editing status message** (plus the typing indicator) that is
+   deleted when the result posts — the finished thread contains only the ask
+   and the answer.
 5. On finish: results posted (PR link / artifact links + summary + cost),
    `state.json` updated, sandbox destroyed. On failure/timeout/cancel: same,
    with the error. The mission folder is the durable record.

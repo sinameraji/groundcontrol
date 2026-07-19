@@ -4,7 +4,6 @@ import {
   fmtError,
   fmtQueued,
   fmtResult,
-  fmtStarted,
   fmtStatus,
   truncate,
 } from "../src/discord/format.js";
@@ -74,24 +73,19 @@ describe("truncate", () => {
 });
 
 describe("fmtQueued", () => {
-  it("includes the mission id and position", () => {
+  it("reads like a person and demotes the id to subtext", () => {
     const s = fmtQueued("m-20260719-4fa1", 3);
-    expect(s).toContain("`m-20260719-4fa1`");
-    expect(s).toContain("#3 in line");
+    expect(s).toContain("behind 3 other missions");
+    expect(s).toContain("-# m-20260719-4fa1");
   });
-});
 
-describe("fmtStarted", () => {
-  it("includes id, type and model", () => {
-    const s = fmtStarted(record(), "moonshotai/kimi-k2.5");
-    expect(s).toContain("`m-20260719-4fa1`");
-    expect(s).toContain("coding");
-    expect(s).toContain("moonshotai/kimi-k2.5");
+  it("uses the singular for one mission ahead", () => {
+    expect(fmtQueued("m-20260719-4fa1", 1)).toContain("behind 1 other mission ");
   });
 });
 
 describe("fmtResult", () => {
-  it("renders PR link, artifact links, summary and cost", () => {
+  it("leads with the summary; PR, links and cost follow; id in subtext", () => {
     const s = fmtResult(
       record({
         status: "succeeded",
@@ -105,28 +99,27 @@ describe("fmtResult", () => {
         tokens: 340_000,
       })
     );
-    expect(s).toContain("✅ `m-20260719-4fa1` done");
+    expect(s.startsWith("shipped the thing")).toBe(true);
     expect(s).toContain("PR: https://github.com/o/r/pull/7");
     expect(s).toContain(
       "[report.md](https://mac.tailnet.ts.net/m-20260719-4fa1/report.md)"
     );
     // second file has no link → plain path, no markdown
-    expect(s).toContain("📄 data.csv");
+    expect(s).toContain("data.csv");
     expect(s).not.toContain("[data.csv]");
-    expect(s).toContain("shipped the thing");
-    expect(s).toContain("≈ $0.12 · 340k tokens");
+    expect(s).toContain("-# ✅ m-20260719-4fa1 · ≈ $0.12 · 340k tokens");
   });
 
   it("handles a missing result entirely", () => {
     const s = fmtResult(record({ status: "succeeded" }));
-    expect(s).toBe("✅ `m-20260719-4fa1` done");
+    expect(s).toBe("-# ✅ m-20260719-4fa1");
   });
 
   it("falls back to plain paths when links are absent", () => {
     const s = fmtResult(
       record({ status: "succeeded", result: { files: ["out/report.md"] } })
     );
-    expect(s).toContain("📄 out/report.md");
+    expect(s).toContain("📎 out/report.md");
     expect(s).not.toContain("](");
   });
 
@@ -150,15 +143,17 @@ describe("fmtResult", () => {
 });
 
 describe("fmtError", () => {
-  it("renders a failure with its error", () => {
+  it("renders a failure with its error and subtext id", () => {
     const s = fmtError(record({ status: "failed", error: "sandbox exploded" }));
-    expect(s).toContain("💥 `m-20260719-4fa1` failed");
+    expect(s).toContain("😵 something went wrong");
     expect(s).toContain("sandbox exploded");
+    expect(s).toContain("-# m-20260719-4fa1");
   });
 
   it("renders a cancellation", () => {
     const s = fmtError(record({ status: "cancelled" }));
-    expect(s).toContain("🛑 `m-20260719-4fa1` cancelled");
+    expect(s).toContain("🛑 cancelled.");
+    expect(s).toContain("-# m-20260719-4fa1");
   });
 
   it("stays under the Discord cap for huge errors", () => {

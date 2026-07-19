@@ -120,8 +120,25 @@ export interface DiscordPoster {
     req: MissionRequest,
     missionId: string
   ): Promise<string | null>;
-  /** Post a message to a mission thread as the given agent. Never throws. */
+  /** Post a permanent message to a mission thread as the agent. Never throws. */
   post(agentName: string, threadId: string, content: string): Promise<void>;
+  /**
+   * Upsert the mission's single self-editing status line (and nudge the
+   * typing indicator) — the human replacement for a scroll of log lines.
+   * Never throws.
+   */
+  setStatus(
+    agentName: string,
+    threadId: string,
+    missionId: string,
+    content: string
+  ): Promise<void>;
+  /** Delete the status line once a final message is posted. Never throws. */
+  clearStatus(
+    agentName: string,
+    threadId: string,
+    missionId: string
+  ): Promise<void>;
 }
 
 export interface JanitorReport {

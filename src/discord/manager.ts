@@ -70,6 +70,19 @@ const MENTION_RE = /<@!?\d+>/g;
  */
 const URL_RE = /<?(https?:\/\/[^\s>]+)>?/;
 
+/**
+ * Greetings/chitchat that shouldn't cost a sandbox: Discord is a place to
+ * TALK to the agents, so "hello" deserves a hello back, not a mission.
+ */
+const SMALLTALK_RE =
+  /^(hi|hiya|hello|hey|yo|sup|howdy|good\s+(morning|afternoon|evening)|thanks?|thank\s+you|ty|ok(ay)?|nice|cool|great|lol|test(ing)?|ping|👋|🙏)[\s.!?👋🙏]*$/i;
+
+function smalltalkReply(agent: AgentDef): string {
+  return agent.role === "coding"
+    ? `👋 hey! Give me a task and a repo and I'll get to work — e.g. \`@${agent.name} fix the flaky login test https://github.com/you/app\``
+    : `👋 hey! Give me something to dig into — e.g. \`@${agent.name} compare SQLite vs DuckDB for local analytics\``;
+}
+
 class Fleet implements BotFleet {
   private readonly bots = new Map<string, { agent: AgentDef; client: Client }>();
   /**
@@ -77,6 +90,8 @@ class Fleet implements BotFleet {
    * thread becomes the mission thread instead of nesting a new one.
    */
   private readonly pendingThreads = new Map<string, string>();
+  /** missionId → id of its single self-editing status message. */
+  private readonly statusMsgs = new Map<string, string>();
 
   constructor(
     private readonly cfg: Config,
@@ -153,7 +168,10 @@ class Fleet implements BotFleet {
       if (channel.isThread()) return channel.id;
       if (channel.type !== ChannelType.GuildText) return null;
 
-      const name = `${missionId} · ${req.prompt}`.slice(0, 100);
+      // Threads are named after the ASK — the mission id is bookkeeping and
+      // lives in message subtext, not in the conversation's title.
+      const name =
+        (req.prompt.replace(/\s+/g, " ").trim() || "mission").slice(0, 90);
       if (req.requestMessageId) {
         try {
           const message = await channel.messages.fetch(req.requestMessageId);
@@ -197,6 +215,54 @@ class Fleet implements BotFleet {
       await channel.send(truncate(content));
     } catch (err) {
       logError("discord", `post to ${threadId} as ${agentName} failed`, err);
+    }
+  }
+
+  async setStatus(
+    agentName: string,
+    threadId: string,
+    missionId: string,
+    content: string
+  ): Promise<void> {
+    try {
+      const bot = this.bots.get(agentName);
+      if (!bot) return;
+      const channel = await bot.client.channels.fetch(threadId);
+      if (!channel?.isSendable()) return;
+      void channel.sendTyping().catch(() => {});
+      const text = `-# ⏳ ${content}`;
+      const existingId = this.statusMsgs.get(missionId);
+      if (existingId) {
+        const msg = await channel.messages.fetch(existingId).catch(() => null);
+        if (msg) {
+          await msg.edit(text);
+          return;
+        }
+      }
+      const sent = await channel.send(text);
+      this.statusMsgs.set(missionId, sent.id);
+    } catch (err) {
+      logError("discord", `setStatus in ${threadId} failed`, err);
+    }
+  }
+
+  async clearStatus(
+    agentName: string,
+    threadId: string,
+    missionId: string
+  ): Promise<void> {
+    try {
+      const messageId = this.statusMsgs.get(missionId);
+      this.statusMsgs.delete(missionId);
+      if (!messageId) return;
+      const bot = this.bots.get(agentName);
+      if (!bot) return;
+      const channel = await bot.client.channels.fetch(threadId);
+      if (!channel?.isSendable()) return;
+      const msg = await channel.messages.fetch(messageId).catch(() => null);
+      if (msg) await msg.delete().catch(() => {});
+    } catch (err) {
+      logError("discord", `clearStatus in ${threadId} failed`, err);
     }
   }
 
@@ -246,6 +312,11 @@ class Fleet implements BotFleet {
       );
       return;
     }
+    // Chitchat gets a chat back — no sandbox, no mission, no cost.
+    if (SMALLTALK_RE.test(prompt)) {
+      await message.reply(smalltalkReply(agent));
+      return;
+    }
 
     let repo: string | undefined;
     if (agent.role === "coding") {
@@ -291,7 +362,7 @@ class Fleet implements BotFleet {
       await message.reply(
         position > 0
           ? fmtQueued(missionId, position)
-          : `🫡 \`${missionId}\` — on it`
+          : `🫡 on it — I'll report back in the thread.\n-# ${missionId}`
       );
     } catch (err) {
       await message.reply(
@@ -390,7 +461,7 @@ class Fleet implements BotFleet {
       await interaction.editReply(
         position > 0
           ? fmtQueued(missionId, position)
-          : `🫡 \`${missionId}\` — on it`
+          : `🫡 on it — results will land in the thread.\n-# ${missionId}`
       );
     } catch (err) {
       await interaction.editReply(

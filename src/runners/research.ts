@@ -31,7 +31,7 @@ export async function runResearchMission(
   const model = agent.model ?? config.defaultModel;
 
   bailIfCancelled(ctx);
-  await ctx.setStatus("creating sandbox");
+  await ctx.setStatus("setting up a fresh workspace");
   const sandbox: SandboxHandle = await hotcell.createSandbox({
     egress: true,
     spendCapUsd: config.spendCapUsd,
@@ -46,7 +46,7 @@ export async function runResearchMission(
     await sandbox.exec(`mkdir -p /workspace/.mission ${OUT_DIR}`);
     await sandbox.writeFile(taskFile, buildTask(agent.persona, mission.prompt));
 
-    await ctx.setStatus("agent working");
+    await ctx.setStatus("digging in — this can take a few minutes");
     const run = await sandbox.execStreaming(
       opencodeRunCommand({ dir: "/workspace", model, taskFile })
     );
@@ -67,7 +67,7 @@ export async function runResearchMission(
     const answer = tailOf(cleanStdout, 1500).trim();
 
     bailIfCancelled(ctx);
-    await ctx.setStatus("collecting artifacts");
+    await ctx.setStatus("writing up the results");
     // A missing/empty out dir is fine — find's exit code is ignored on purpose.
     const found = await sandbox.exec(
       `find ${shellQuote(OUT_DIR)} -type f 2>/dev/null || true`

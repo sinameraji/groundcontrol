@@ -14,43 +14,46 @@ export function truncate(s: string, max: number = DISCORD_MAX): string {
   return `${cut}${suffix}`;
 }
 
-/** "⏳ queued as `m-…` — #N in line" */
+/**
+ * Queue notice — conversational, with the mission id demoted to subtext.
+ * (Discord renders "-# …" as small muted text.)
+ */
 export function fmtQueued(missionId: string, position: number): string {
-  return `⏳ queued as \`${missionId}\` — #${position} in line`;
-}
-
-/** "🚀 `m-…` starting — <type> via <model>" */
-export function fmtStarted(m: MissionRecord, model: string): string {
-  return truncate(`🚀 \`${m.id}\` starting — ${m.type} via ${model}`);
+  const ahead = position === 1 ? "1 other mission" : `${position} other missions`;
+  return `⏳ in line behind ${ahead} — I'll start as soon as a slot frees up\n-# ${missionId}`;
 }
 
 /**
- * Success message: PR link and/or artifact links (files[i] → links[i], fall
- * back to plain path when links are null), summary, cost line
- * ("≈ $0.12 · 340k tokens") when known. 2000-char safe.
+ * Success message, answer-first: the summary IS the message; PR / artifact
+ * links follow; the mission id + cost live in a small "-#" subtext footer.
+ * The thread should read like a conversation, not a terminal. 2000-char safe.
  */
 export function fmtResult(m: MissionRecord): string {
-  const lines: string[] = [`✅ \`${m.id}\` done`];
   const r = m.result ?? {};
+  const lines: string[] = [];
+  if (r.summary) lines.push(r.summary.trim());
   if (r.prUrl) lines.push(`🔀 PR: ${r.prUrl}`);
-  (r.files ?? []).forEach((file, i) => {
+  else if (r.branch) lines.push(`🔀 branch pushed: \`${r.branch}\``);
+  const attachments = (r.files ?? []).map((file, i) => {
     const link = r.links?.[i];
-    lines.push(link ? `📄 [${file}](${link})` : `📄 ${file}`);
+    return link ? `[${file}](${link})` : file;
   });
-  if (r.summary) lines.push(r.summary);
+  if (attachments.length > 0) lines.push(`📎 ${attachments.join(" · ")}`);
+  const foot = [`✅ ${m.id}`];
   const cost = costLine(m.costUsd, m.tokens);
-  if (cost) lines.push(cost);
+  if (cost) foot.push(cost);
+  lines.push(`-# ${foot.join(" · ")}`);
   return truncate(lines.join("\n"));
 }
 
-/** Failure/cancel message with the error, 2000-char safe. */
+/** Failure/cancel message — human words up top, id in the subtext. */
 export function fmtError(m: MissionRecord): string {
-  const head =
+  const lines: string[] =
     m.status === "cancelled"
-      ? `🛑 \`${m.id}\` cancelled`
-      : `💥 \`${m.id}\` failed`;
-  const lines = [head];
+      ? ["🛑 cancelled."]
+      : ["😵 something went wrong:"];
   if (m.error) lines.push(m.error);
+  lines.push(`-# ${m.id}`);
   return truncate(lines.join("\n"));
 }
 

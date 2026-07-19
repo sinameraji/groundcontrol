@@ -39,7 +39,7 @@ export async function runCodingMission(
   const model = agent.model ?? config.defaultModel;
 
   bailIfCancelled(ctx);
-  await ctx.setStatus("creating sandbox");
+  await ctx.setStatus("setting up a fresh workspace");
   const sandbox: SandboxHandle = await hotcell.createSandbox({
     repo,
     egress: true,
@@ -62,7 +62,7 @@ export async function runCodingMission(
     // origin/HEAD being unset or the default branch not being "main".
     const initialSha = await headSha(sandbox, repoDir);
 
-    await ctx.setStatus("agent working");
+    await ctx.setStatus("working on it — this can take a few minutes");
     const run = await sandbox.execStreaming(
       opencodeRunCommand({ dir: repoDir, model, taskFile })
     );
@@ -83,7 +83,7 @@ export async function runCodingMission(
     const answer = tailOf(cleanStdout, 1500).trim();
 
     bailIfCancelled(ctx);
-    await ctx.setStatus("committing & bundling");
+    await ctx.setStatus("packaging the changes");
     const post = await sandbox.exec(
       postRunScript(repoDir, mission.id, agent.name, branch, initialSha)
     );
@@ -106,7 +106,7 @@ export async function runCodingMission(
     let baseBranch = "main";
     if (bundled) {
       baseBranch = post.stdout.match(/^BASE=(.+)$/m)?.[1]?.trim() || "main";
-      await ctx.setStatus("retrieving bundle");
+      await ctx.setStatus("collecting the work");
       const buf = await sandbox.readFileBinary("/workspace/.mission/out.bundle");
       bundlePath = join(missionDir, "out.bundle");
       await writeFile(bundlePath, buf);
@@ -124,11 +124,11 @@ export async function runCodingMission(
 
     if (!bundled) {
       summary =
-        `${agent.name} made no commits — nothing to push, no PR opened.\n\n` +
-        `agent's answer:\n${answer || "(no output)"}`;
+        `${answer || "(no output)"}\n\n` +
+        `_(no code changes were made — nothing to push)_`;
     } else {
       bailIfCancelled(ctx);
-      await ctx.setStatus("publishing PR");
+      await ctx.setStatus("opening the pull request");
       let publishError: string | undefined;
       try {
         const workDir = await mkdtemp(join(tmpdir(), "groundcontrol-"));
@@ -151,20 +151,22 @@ export async function runCodingMission(
         publishError = err instanceof Error ? err.message : String(err);
       }
 
+      // The PR / branch link is rendered by fmtResult from result.prUrl and
+      // result.branch — the summary stays the agent's own words.
       if (prUrl) {
-        summary = `PR opened: ${prUrl}\n\n${answer || "(no output)"}`;
+        summary = answer || "(no output)";
       } else if (pushedBranch) {
         summary =
-          `branch ${pushedBranch} pushed, but the PR step failed` +
-          `${publishError ? `: ${publishError}` : ""}.\n\n` +
-          `${answer || "(no output)"}`;
+          `${answer || "(no output)"}\n\n` +
+          `⚠️ I pushed the branch but couldn't open the PR` +
+          `${publishError ? `: ${publishError}` : ""}.`;
       } else {
         // The bundle is on disk — the work is preserved, so the mission still
         // succeeds even though publishing failed.
         summary =
-          `publishing failed${publishError ? `: ${publishError}` : ""} — ` +
-          `the work is preserved in out.bundle in the mission folder.\n\n` +
-          `${answer || "(no output)"}`;
+          `${answer || "(no output)"}\n\n` +
+          `⚠️ publishing failed${publishError ? `: ${publishError}` : ""} — ` +
+          `the work is preserved as \`out.bundle\` in the mission folder.`;
       }
     }
 

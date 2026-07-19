@@ -15,12 +15,7 @@ import type { MissionStore } from "./store.js";
 import type { Hotcell } from "../hotcell.js";
 import { runCodingMission } from "../runners/coding.js";
 import { runResearchMission } from "../runners/research.js";
-import {
-  fmtError,
-  fmtQueued,
-  fmtResult,
-  fmtStarted,
-} from "../discord/format.js";
+import { fmtError, fmtQueued, fmtResult } from "../discord/format.js";
 
 interface LiveMission {
   agent: AgentDef;
@@ -97,7 +92,7 @@ export class MissionEngine implements Dispatcher {
         m.status = "cancelled";
         m.finishedAt = new Date().toISOString();
         await this.store.save(m);
-        await this.postTo(m, "🛑 cancelled before start");
+        await this.postTo(m, `🛑 cancelled — it hadn't started yet.\n-# ${m.id}`);
       }
       this.live.delete(missionId);
       return true;
@@ -166,15 +161,14 @@ export class MissionEngine implements Dispatcher {
     m.status = "running";
     m.startedAt = new Date().toISOString();
     await this.store.save(m);
-    const model = live.agent.model ?? this.cfg.defaultModel;
-    await this.postTo(m, fmtStarted(m, model));
+    await this.setStatusFor(m, "getting started…");
 
     const ctx: RunnerContext = {
       mission: m,
       agent: live.agent,
       config: this.cfg,
       missionDir: this.store.missionDir(id),
-      setStatus: (phase) => this.postTo(m, `· ${phase}`),
+      setStatus: (phase) => this.setStatusFor(m, phase),
       isCancelled: () => live.cancelled,
       registerSandbox: (h) => {
         live.sandboxes.push(h);
@@ -206,6 +200,7 @@ export class MissionEngine implements Dispatcher {
       // A resolved runner means the work completed — a cancel that raced the
       // finish arrived too late to matter, so this is a success either way.
       await this.close(m, "succeeded");
+      await this.clearStatusFor(m);
       await this.postTo(m, fmtResult(m));
       log("engine", `mission ${id} ${m.status}`, {
         costUsd: m.costUsd,
@@ -219,6 +214,7 @@ export class MissionEngine implements Dispatcher {
         m,
         live.cancelled && !live.timedOut ? "cancelled" : "failed"
       );
+      await this.clearStatusFor(m);
       await this.postTo(m, fmtError(m));
       logError("engine", `mission ${id} ${m.status}`, err);
     } finally {
@@ -268,5 +264,15 @@ export class MissionEngine implements Dispatcher {
   private async postTo(m: MissionRecord, content: string): Promise<void> {
     if (!m.threadId || !this.poster) return;
     await this.poster.post(m.agentName, m.threadId, content);
+  }
+
+  private async setStatusFor(m: MissionRecord, content: string): Promise<void> {
+    if (!m.threadId || !this.poster) return;
+    await this.poster.setStatus(m.agentName, m.threadId, m.id, content);
+  }
+
+  private async clearStatusFor(m: MissionRecord): Promise<void> {
+    if (!m.threadId || !this.poster) return;
+    await this.poster.clearStatus(m.agentName, m.threadId, m.id);
   }
 }
