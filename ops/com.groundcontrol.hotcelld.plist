@@ -20,6 +20,7 @@
   <dict>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <!-- __EXTRA_ENV__ (install.sh: DOCKER_HOST for Colima setups) -->
   </dict>
   <key>StandardOutPath</key>
   <string>__HOME__/Library/Logs/groundcontrol/hotcelld.log</string>

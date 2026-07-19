@@ -19,6 +19,16 @@ fi
 NODE_BIN="$(command -v node)"
 HOTCELL_BIN="$(command -v hotcell || true)"
 
+# Colima puts the Docker socket in $HOME, not /var/run — the hotcell daemon
+# needs DOCKER_HOST pointed there or it fails with "connect ENOENT
+# /var/run/docker.sock".
+DOCKER_SOCK="$HOME/.colima/default/docker.sock"
+EXTRA_ENV=""
+if [ -S "$DOCKER_SOCK" ] && [ ! -S /var/run/docker.sock ]; then
+  EXTRA_ENV="<key>DOCKER_HOST</key><string>unix://$DOCKER_SOCK</string>"
+  echo "colima detected — baking DOCKER_HOST into the hotcell daemon plist"
+fi
+
 if [ ! -f "$GC_DIR/dist/index.js" ]; then
   echo "dist/index.js missing — building..."
   (cd "$GC_DIR" && npm run build)
@@ -42,6 +52,7 @@ install_plist() {
     -e "s|__NODE_BIN__|$NODE_BIN|g" \
     -e "s|__HOTCELL_BIN__|$HOTCELL_BIN|g" \
     -e "s|__HOME__|$HOME|g" \
+    -e "s|<!-- __EXTRA_ENV__.*-->|$EXTRA_ENV|g" \
     "$src" > "$dst"
   plutil -lint -s "$dst"
 

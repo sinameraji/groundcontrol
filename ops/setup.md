@@ -35,6 +35,11 @@ hotcell start                # starts the daemon on 127.0.0.1:4750
 hotcell keys add openrouter  # paste your OpenRouter API key
 ```
 
+> **Colima users**: the daemon needs the Docker socket. Colima keeps it in
+> your home dir, so start the daemon with
+> `DOCKER_HOST="unix://$HOME/.colima/default/docker.sock" hotcell start`
+> (the launchd install in step 7 bakes this in automatically).
+
 The key is stored in the macOS keychain and used only by hotcell's egress
 gateway — sandboxes receive a short-lived `hc-…` token, never the real key.
 
