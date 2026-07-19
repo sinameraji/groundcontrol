@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runJanitor } from "../src/janitor.js";
-import type { Config } from "../src/types.js";
+import type { Config, ThreadCell } from "../src/types.js";
 
 const NO_DOCKER = "/nonexistent-docker-binary";
 const BIG = 2 * 1024 * 1024; // 2 MB against maxArtifactMb: 1
@@ -20,7 +20,8 @@ function testConfig(artifactsRoot: string): Config {
     spendCapUsd: 5,
     missionTimeoutMinutes: 45,
     ghPath: "gh",
-    janitor: { maxArtifactMb: 1, artifactMaxAgeDays: 30 },
+    sandboxSleepAfterMs: 2 * 60 * 1000,
+    janitor: { maxArtifactMb: 1, artifactMaxAgeDays: 30, cellMaxIdleDays: 30 },
   };
 }
 
@@ -120,5 +121,146 @@ describe("runJanitor", () => {
     });
     expect(report.prunedFiles).toEqual([]);
     expect(report.freedBytes).toBe(0);
+  });
+});
+
+describe("runJanitor cell reaping", () => {
+  let root: string;
+  const now = new Date("2026-07-19T12:00:00.000Z");
+  const daysAgo = (d: number): string =>
+    new Date(now.getTime() - d * 24 * 60 * 60 * 1000).toISOString();
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "gc-janitor-cells-"));
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  function makeCell(
+    threadId: string,
+    sandboxId: string,
+    lastUsedAt: string
+  ): ThreadCell {
+    return {
+      threadId,
+      sandboxId,
+      agentName: "codey",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lastUsedAt,
+      missionCount: 1,
+      totalCostUsd: 0,
+      totalTokens: 0,
+    };
+  }
+
+  function fakeCells(cells: ThreadCell[]): {
+    removed: string[];
+    list(): Promise<ThreadCell[]>;
+    remove(id: string): Promise<void>;
+  } {
+    const removed: string[] = [];
+    return {
+      removed,
+      list: async () => cells,
+      remove: async (id: string) => {
+        removed.push(id);
+      },
+    };
+  }
+
+  it("reaps cells idle past cellMaxIdleDays and keeps fresh ones", async () => {
+    const cells = fakeCells([
+      makeCell("t-old", "sbx-old", daysAgo(40)),
+      makeCell("t-fresh", "sbx-fresh", daysAgo(1)),
+    ]);
+    const destroyed: string[] = [];
+    const report = await runJanitor(testConfig(root), {
+      dockerPath: NO_DOCKER,
+      now,
+      cells,
+      destroySandbox: async (id) => {
+        destroyed.push(id);
+      },
+    });
+    expect(destroyed).toEqual(["sbx-old"]);
+    expect(cells.removed).toEqual(["t-old"]);
+    expect(report.reapedCells).toEqual(["t-old"]);
+  });
+
+  it("never reaps a cell whose sandbox is running, however idle it looks", async () => {
+    // A long mission only stamps lastUsedAt at start/settle — the daemon's
+    // live status is the belt to that suspender.
+    const cells = fakeCells([
+      makeCell("t-busy", "sbx-busy", daysAgo(40)),
+      makeCell("t-idle", "sbx-idle", daysAgo(40)),
+    ]);
+    const destroyed: string[] = [];
+    const report = await runJanitor(testConfig(root), {
+      dockerPath: NO_DOCKER,
+      now,
+      cells,
+      destroySandbox: async (id) => {
+        destroyed.push(id);
+      },
+      listSandboxes: async () => [
+        { id: "sbx-busy", status: "running" },
+        { id: "sbx-idle", status: "paused" },
+      ],
+    });
+    expect(destroyed).toEqual(["sbx-idle"]);
+    expect(cells.removed).toEqual(["t-idle"]);
+    expect(report.reapedCells).toEqual(["t-idle"]);
+  });
+
+  it("treats an unparseable lastUsedAt as expired", async () => {
+    const cells = fakeCells([makeCell("t-bad", "sbx-bad", "not-a-date")]);
+    const destroyed: string[] = [];
+    const report = await runJanitor(testConfig(root), {
+      dockerPath: NO_DOCKER,
+      now,
+      cells,
+      destroySandbox: async (id) => {
+        destroyed.push(id);
+      },
+    });
+    expect(destroyed).toEqual(["sbx-bad"]);
+    expect(report.reapedCells).toEqual(["t-bad"]);
+  });
+
+  it("dryRun reports would-be reaps but destroys and removes nothing", async () => {
+    const cells = fakeCells([makeCell("t-old", "sbx-old", daysAgo(40))]);
+    const destroyed: string[] = [];
+    const report = await runJanitor(testConfig(root), {
+      dockerPath: NO_DOCKER,
+      now,
+      dryRun: true,
+      cells,
+      destroySandbox: async (id) => {
+        destroyed.push(id);
+      },
+    });
+    expect(report.reapedCells).toEqual(["t-old"]);
+    expect(destroyed).toEqual([]);
+    expect(cells.removed).toEqual([]);
+  });
+
+  it("records a per-cell error and keeps reaping the rest", async () => {
+    const cells = fakeCells([
+      makeCell("t-broken", "sbx-broken", daysAgo(40)),
+      makeCell("t-old", "sbx-old", daysAgo(40)),
+    ]);
+    const report = await runJanitor(testConfig(root), {
+      dockerPath: NO_DOCKER,
+      now,
+      cells,
+      destroySandbox: async (id) => {
+        if (id === "sbx-broken") throw new Error("daemon says no");
+      },
+    });
+    expect(report.reapedCells).toEqual(["t-old"]);
+    expect(cells.removed).toEqual(["t-old"]);
+    expect(report.errors).toContain("reap cell t-broken: daemon says no");
   });
 });

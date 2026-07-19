@@ -121,6 +121,13 @@ export async function publishBundle(opts: PublishOpts): Promise<PublishResult> {
     } catch {
       try {
         await fullFetch();
+        // Stacked follow-ups: the bundle's prerequisites may live on another
+        // branch (a previous mission's unmerged PR) — pull all heads too.
+        await run("git", [
+          "fetch",
+          "origin",
+          "+refs/heads/*:refs/remotes/origin/*",
+        ]).catch(() => {});
         await run("git", ["fetch", bundlePath, `${branch}:${branch}`]);
       } catch (err) {
         return {

@@ -77,6 +77,21 @@ const URL_RE = /<?(https?:\/\/[^\s>]+)>?/;
 const SMALLTALK_RE =
   /^(hi|hiya|hello|hey|yo|sup|howdy|good\s+(morning|afternoon|evening)|thanks?|thank\s+you|ty|ok(ay)?|nice|cool|great|lol|test(ing)?|ping|👋|🙏)[\s.!?👋🙏]*$/i;
 
+/** Max chars of thread context fed into a task prompt (the tail is kept). */
+const MAX_CONTEXT_CHARS = 3500;
+
+/**
+ * Cap `text` to ~MAX_CONTEXT_CHARS keeping the END — in a conversation the
+ * recent messages matter most. Cuts at a line boundary when one exists inside
+ * the kept window (a single over-long line is kept mid-cut instead).
+ */
+function tailCap(text: string): string {
+  if (text.length <= MAX_CONTEXT_CHARS) return text;
+  const tail = text.slice(-MAX_CONTEXT_CHARS);
+  const cut = tail.indexOf("\n");
+  return cut === -1 ? tail : tail.slice(cut + 1);
+}
+
 function smalltalkReply(agent: AgentDef): string {
   return agent.role === "coding"
     ? `👋 hey! Give me a task and a repo and I'll get to work — e.g. \`@${agent.name} fix the flaky login test https://github.com/you/app\``
@@ -263,6 +278,42 @@ class Fleet implements BotFleet {
       if (msg) await msg.delete().catch(() => {});
     } catch (err) {
       logError("discord", `clearStatus in ${threadId} failed`, err);
+    }
+  }
+
+  async fetchContext(
+    agentName: string,
+    threadId: string,
+    excludeMessageId?: string
+  ): Promise<string | null> {
+    try {
+      const bot = this.bots.get(agentName);
+      if (!bot) return null;
+      const channel = await bot.client.channels
+        .fetch(threadId)
+        .catch(() => null);
+      if (!channel?.isTextBased()) return null;
+      const fetched = await channel.messages.fetch({ limit: 25 });
+      const lines: string[] = [];
+      // fetch() returns newest-first — reverse into chronological order.
+      for (const msg of [...fetched.values()].reverse()) {
+        const content = msg.content.trim();
+        // Skip system/thread-starter messages, empty bodies (attachment-only),
+        // "-#" status/subtext lines — and the requesting message itself, whose
+        // text already IS the task prompt.
+        if (msg.system || !content || content.startsWith("-#")) continue;
+        if (excludeMessageId && msg.id === excludeMessageId) continue;
+        const name =
+          msg.member?.displayName ??
+          msg.author.displayName ??
+          msg.author.username;
+        lines.push(`${name}: ${content}`);
+      }
+      if (lines.length === 0) return null;
+      return tailCap(lines.join("\n"));
+    } catch (err) {
+      logError("discord", `fetchContext for ${threadId} failed`, err);
+      return null;
     }
   }
 

@@ -73,6 +73,48 @@ Serve), and **only the owner's Discord user id is obeyed**.
    (base64 over exec, so binaries survive).
 5. Thread gets: the summary inline + a private tailnet link per artifact, cost.
 
+## Thread cells (v1.5)
+
+A Discord thread is a conversation, so it keeps **one long-lived sandbox** —
+its *cell* — instead of a fresh sandbox per message. This rides hotcell's
+lifecycle FSM directly: cells are created with `sleepAfter`, auto-pause after
+idle (**≈zero RAM while paused** — cold stop-with-volume on the container
+driver, memory snapshot on microVMs; paused cells don't count against the
+admission budget), and *any* operation transparently resumes them — minutes or
+weeks later. The workspace is the conversation's memory: the repo clone, past
+reports (`/workspace/history/`), and any notes the agent left survive between
+missions.
+
+Mapping lives in `<ARTIFACTS_ROOT>/threads.json` (`src/missions/cells.ts`,
+atomic writes; the daemon's sandbox list is the source of truth — this file is
+just the address book).
+
+**Engine owns the whole lifecycle** (runners never call `usage()` or
+`destroy()`):
+
+1. Resolving: mission in thread T → `cells.get(T)` → `attachSandbox(id)`;
+   a vanished sandbox (daemon reset) drops the stale mapping and the runner
+   creates fresh. Thread context (`poster.fetchContext`) is fetched for every
+   threaded mission and included in the task prompt.
+2. Completion — success *or* ordinary failure: snapshot cumulative sandbox
+   usage; **per-mission cost = cumulative − cell's recorded baseline**; upsert
+   the cell (sandboxId, lastUsedAt, missionCount, new totals). The sandbox is
+   left running; `sleepAfter` pauses it. Missions without a thread (thread
+   creation failed) keep v1 behavior: usage → destroy.
+3. Cancel / timeout: the sandbox is destroyed **and the cell mapping removed**
+   — destroy is the only reliable interrupt, so the thread starts a fresh cell
+   next time (the thread message says so).
+4. Restart orphans: a recorded sandbox is destroyed **only if it isn't some
+   thread's current cell** — conversations survive orchestrator deploys.
+5. Reaping: the janitor destroys cells idle past `CELL_MAX_IDLE_DAYS`
+   (default 30) and prunes their mappings.
+
+Runner deltas: reuse `ctx.cellSandbox ?? createSandbox(… sleepAfterMs …)`;
+coding ensures the repo exists in a reused cell (`git clone` if missing,
+`fetch` if present); research archives the previous `/workspace/out` into
+`/workspace/history/<timestamp>/` before starting. Spend caps are per-sandbox,
+so **a cell's cap is the conversation's budget**, not one message's.
+
 ## Module map
 
 | Path | Owns |
@@ -80,6 +122,7 @@ Serve), and **only the owner's Discord user id is obeyed**.
 | `src/types.ts` | all cross-module types (the contract — do not widen casually) |
 | `src/config.ts` | env + agents-file loading, validation |
 | `src/missions/store.ts` | mission ids, folders, `state.json` persistence, orphan sweep |
+| `src/missions/cells.ts` | threadId → cell (long-lived sandbox) mapping, `threads.json` |
 | `src/missions/queue.ts` | concurrency-capped FIFO queue |
 | `src/missions/runner.ts` | `MissionEngine` — the seam: queue+store+runners+Discord+timeout |
 | `src/hotcell.ts` | thin wrapper over `@hotcell/sdk` + OpenCode setup/run command builders |
@@ -132,10 +175,14 @@ Serve), and **only the owner's Discord user id is obeyed**.
 
 ## v1 / v2 line
 
-**v1 (this)**: several named agent bots; each mission is one isolated sandbox;
+**v1**: several named agent bots; each mission is one isolated sandbox;
 results as PR links / private file links in a per-mission thread.
 
+**v1.5 (this)**: thread cells — one persistent, auto-pausing sandbox per
+conversation, with thread messages fed to the prompt, so follow-ups have both
+conversational and workspace memory.
+
 **v2 (rails already laid)**: agents read each other's mission folders and hand
-off (`@codey` builds what `@scout` researched). The mission-folder-per-task,
-thread-per-mission, and bot-identity-per-agent structure is exactly what that
-needs — plus a hop cap and the same spend caps.
+off (`@codey` builds what `@scout` researched). Cells already allow a second
+agent to join a thread and inherit its workspace; v2 adds deliberate handoffs,
+a hop cap, and cross-thread artifact sharing.

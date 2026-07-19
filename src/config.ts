@@ -53,9 +53,12 @@ export function loadConfig(cwd: string = process.cwd()): Config {
     defaultRepo: emptyToUndef(env.DEFAULT_REPO),
     ghPath: emptyToUndef(env.GH_PATH) ?? "gh",
     sandboxImage: emptyToUndef(env.SANDBOX_IMAGE),
+    sandboxSleepAfterMs:
+      intFrom(env.SANDBOX_SLEEP_AFTER_MINUTES, 2) * 60_000,
     janitor: {
       maxArtifactMb: intFrom(env.JANITOR_MAX_ARTIFACT_MB, 100),
       artifactMaxAgeDays: intFrom(env.JANITOR_ARTIFACT_MAX_AGE_DAYS, 30),
+      cellMaxIdleDays: intFrom(env.CELL_MAX_IDLE_DAYS, 30),
     },
   };
 }

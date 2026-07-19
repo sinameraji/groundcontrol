@@ -5,6 +5,7 @@ import { log, logError } from "./log.js";
 import { MissionStore } from "./missions/store.js";
 import { MissionQueue } from "./missions/queue.js";
 import { MissionEngine } from "./missions/runner.js";
+import { ThreadCells } from "./missions/cells.js";
 import { Hotcell } from "./hotcell.js";
 import { startBots } from "./discord/manager.js";
 import { startFileServer } from "./files/server.js";
@@ -34,7 +35,8 @@ async function start(): Promise<void> {
   const store = new MissionStore(cfg.artifactsRoot);
   const queue = new MissionQueue(cfg.maxConcurrentMissions);
   const hotcell = new Hotcell(cfg);
-  const engine = new MissionEngine(cfg, store, queue, hotcell);
+  const cells = new ThreadCells(cfg.artifactsRoot);
+  const engine = new MissionEngine(cfg, store, queue, hotcell, cells);
 
   // Sweep BEFORE the bots come online: anything still queued/running in the
   // store predates this process, so a fresh boot-time submission can never be
@@ -77,6 +79,12 @@ async function janitor(): Promise<void> {
   );
   if (report.dockerPruneOutput) {
     log("janitor", `docker: ${report.dockerPruneOutput.split("\n").at(-1)}`);
+  }
+  if (report.reapedCells && report.reapedCells.length > 0) {
+    log(
+      "janitor",
+      `reaped ${report.reapedCells.length} idle cell(s): ${report.reapedCells.join(", ")}`
+    );
   }
   for (const e of report.errors) logError("janitor", e);
 }

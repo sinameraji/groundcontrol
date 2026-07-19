@@ -5,8 +5,9 @@ Turn a spare Mac into a private agent server you command from Discord.
 spins up an isolated [hotcell](https://github.com/sinameraji/hotcell) sandbox,
 runs OpenCode headlessly via OpenRouter (Kimi K2.5 by default), and reports
 back in a per-mission Discord thread — a PR link for coding missions, a
-private tailnet file link for research missions. Then the sandbox is
-destroyed. No inbound ports, no keys in sandboxes, no public artifacts.
+private tailnet file link for research missions. The thread keeps its sandbox
+between messages (auto-paused when idle), so replies pick up right where the
+agent left off. No inbound ports, no keys in sandboxes, no public artifacts.
 
 ## Architecture
 
@@ -83,6 +84,25 @@ battery settings) is in [ops/setup.md](ops/setup.md).
 | `/research` | research | same as the mention, as a slash command |
 | `/status` | any | active + queued missions |
 | `/cancel` | any | cancel a queued or running mission by id |
+
+## Conversations
+
+Each Discord thread keeps **one persistent sandbox** — its *cell*. Reply in a
+thread and the agent picks up where it left off: the repo clone, past reports,
+and any notes it made are still in the workspace, and recent thread messages
+are fed into the prompt, so follow-ups ("now compare that against X") resolve
+their references.
+
+Idle cells auto-pause after `SANDBOX_SLEEP_AFTER_MINUTES` (default 2) at
+~zero RAM, then transparently resume when you return — even weeks later. The
+weekly janitor destroys cells idle longer than `CELL_MAX_IDLE_DAYS` (default
+30), workspace included; after that the thread simply starts a fresh cell.
+Both variables are in `.env.example`.
+
+One budget note: the egress spend cap is per **sandbox**, so
+`MISSION_SPEND_CAP_USD` is the whole conversation's budget, not one
+message's — a long-running thread spends against a single cap until its cell
+is destroyed.
 
 ## Costs
 

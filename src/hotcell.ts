@@ -42,6 +42,12 @@ export interface CreateSandboxOpts {
   /** Per-mission LLM spend ceiling in USD. */
   spendCapUsd?: number;
   image?: string;
+  /**
+   * Idle auto-pause window (ms). A paused sandbox frees its RAM (cold
+   * stop-with-volume on the container driver) and transparently resumes on
+   * the next operation — the primitive behind thread cells.
+   */
+  sleepAfterMs?: number;
 }
 
 export class Hotcell {
@@ -69,6 +75,7 @@ export class Hotcell {
     if (opts.repo !== undefined) create.repo = opts.repo;
     if (opts.ref !== undefined) create.repoRef = opts.ref;
     if (opts.setup !== undefined) create.setup = opts.setup;
+    if (opts.sleepAfterMs !== undefined) create.sleepAfter = opts.sleepAfterMs;
 
     if (!opts.egress) {
       create.egress = false;
@@ -82,6 +89,34 @@ export class Hotcell {
 
     const sandbox = await this.client.getSandbox(undefined, create);
     return wrapSandbox(sandbox);
+  }
+
+  /**
+   * Attach to an existing sandbox by id — a paused cell transparently
+   * resumes on its next operation (admission-gated by the daemon). Returns
+   * null when the daemon no longer has it; plain getSandbox(id) would
+   * get-or-CREATE a blank sandbox instead. Never throws.
+   */
+  async attachSandbox(id: string): Promise<SandboxHandle | null> {
+    try {
+      const existing = await this.client.list();
+      if (!existing.some((s) => s.id === id)) return null;
+      return wrapSandbox(await this.client.getSandbox(id));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Sandbox ids + lifecycle status, or null when the daemon is unreachable. */
+  async listInfo(): Promise<Array<{ id: string; status: string }> | null> {
+    try {
+      return (await this.client.list()).map((s) => ({
+        id: s.id,
+        status: String(s.status),
+      }));
+    } catch {
+      return null;
+    }
   }
 
   /**
