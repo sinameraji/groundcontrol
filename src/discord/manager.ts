@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   ChannelType,
   Client,
@@ -329,6 +331,23 @@ class Fleet implements BotFleet {
     );
   }
 
+  /** Persist /model overrides to <artifactsRoot>/models.json (read at boot). */
+  private async persistModels(): Promise<void> {
+    try {
+      const overrides: Record<string, string> = {};
+      for (const { agent } of this.bots.values()) {
+        if (agent.model) overrides[agent.name] = agent.model;
+      }
+      await writeFile(
+        join(this.cfg.artifactsRoot, "models.json"),
+        JSON.stringify(overrides, null, 2) + "\n",
+        "utf8"
+      );
+    } catch (err) {
+      logError("discord", "persisting model overrides failed", err);
+    }
+  }
+
   // ── handlers ─────────────────────────────────────────────────────────────
 
   private async onMessage(
@@ -471,6 +490,37 @@ class Fleet implements BotFleet {
           cancelled
             ? `🛑 \`${missionId}\` cancelled`
             : `🤷 no queued or running mission \`${missionId}\``
+        );
+        return;
+      }
+      case "model": {
+        const requested = interaction.options.getString("model")?.trim();
+        const current = agent.model ?? this.cfg.defaultModel;
+        if (!requested) {
+          await interaction.reply(
+            `🧠 ${agent.name} is using \`${current}\`` +
+              (agent.model ? "" : " (the default)")
+          );
+          return;
+        }
+        if (requested === "reset") {
+          agent.model = undefined;
+          await this.persistModels();
+          await interaction.reply(
+            `🧠 back to the default: \`${this.cfg.defaultModel}\` — applies from the next mission`
+          );
+          return;
+        }
+        if (!/^[\w.-]+\/[\w.:-]+$/.test(requested)) {
+          await interaction.reply(
+            "🤔 that doesn't look like an OpenRouter model id — expected `vendor/model`, e.g. `moonshotai/kimi-k2.5` (or `reset`)"
+          );
+          return;
+        }
+        agent.model = requested;
+        await this.persistModels();
+        await interaction.reply(
+          `🧠 switched to \`${requested}\` — applies from the next mission (typos will fail loudly there)`
         );
         return;
       }

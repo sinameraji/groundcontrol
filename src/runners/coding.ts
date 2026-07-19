@@ -126,6 +126,17 @@ export async function runCodingMission(
     );
   }
 
+  // Git identity BEFORE the agent runs, so every commit it makes is authored
+  // as the agent — with a deliberately unmappable email (.invalid TLD), so
+  // GitHub never links the commits to some stranger's account. Best-effort:
+  // the post-run script sets it again for the fallback commit.
+  await sandbox
+    .exec(
+      `git -C ${shellQuote(repoDir)} config user.name ${shellQuote(agent.name)} && ` +
+        `git -C ${shellQuote(repoDir)} config user.email ${shellQuote(agentEmail(agent.name))}`
+    )
+    .catch(() => {});
+
   await ctx.setStatus("working on it — this can take a few minutes");
   const run = await sandbox.execStreaming(
     opencodeRunCommand({ dir: repoDir, model, taskFile })
@@ -305,7 +316,7 @@ function postRunScript(
   branch: string,
   initialSha: string
 ): string {
-  const email = `${agentName.toLowerCase().replace(/[^a-z0-9-]/g, "-")}@users.noreply.github.com`;
+  const email = agentEmail(agentName);
   return [
     `set -e`,
     `cd ${shellQuote(repoDir)}`,
@@ -381,4 +392,13 @@ function headOf(s: string, n: number): string {
 /** Short stable suffix distinguishing same-basename repos in one workspace. */
 function urlHash(s: string): string {
   return createHash("sha256").update(s).digest("hex").slice(0, 8);
+}
+
+/**
+ * Commit-author email for an agent. The .invalid TLD (RFC 2606) can never be
+ * a registered address, so GitHub renders "codey" with a plain gray avatar
+ * instead of linking commits to whoever happens to own that username.
+ */
+function agentEmail(agentName: string): string {
+  return `${agentName.toLowerCase().replace(/[^a-z0-9-]/g, "-")}@groundcontrol.invalid`;
 }

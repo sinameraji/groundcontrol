@@ -84,6 +84,17 @@ function commandsFor(
   }
   commands.push(
     new SlashCommandBuilder()
+      .setName("model")
+      .setDescription(`Show or change ${agent.name}'s model`)
+      .addStringOption((o) =>
+        o
+          .setName("model")
+          .setDescription(
+            "OpenRouter model id (vendor/model), or 'reset' for the default"
+          )
+      )
+      .toJSON(),
+    new SlashCommandBuilder()
       .setName("status")
       .setDescription("Show active and queued missions")
       .toJSON(),

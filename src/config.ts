@@ -35,6 +35,9 @@ export function loadConfig(cwd: string = process.cwd()): Config {
 
   const publicBaseUrl = (env.PUBLIC_BASE_URL ?? "").trim().replace(/\/+$/, "");
 
+  // Model overrides set at runtime via the /model command survive restarts.
+  applyModelOverrides(agents, artifactsRoot);
+
   return {
     ownerId,
     guildId: emptyToUndef(env.DISCORD_GUILD_ID),
@@ -96,6 +99,23 @@ function loadAgents(cwd: string, env: NodeJS.ProcessEnv): AgentDef[] {
     }
   }
   return agents;
+}
+
+/** Apply <artifactsRoot>/models.json ({agentName: model}) over agents.json. */
+function applyModelOverrides(agents: AgentDef[], artifactsRoot: string): void {
+  try {
+    const file = path.join(artifactsRoot, "models.json");
+    const overrides = JSON.parse(fs.readFileSync(file, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    for (const a of agents) {
+      const m = overrides[a.name];
+      if (typeof m === "string" && m.trim() !== "") a.model = m.trim();
+    }
+  } catch {
+    /* no overrides file — agents.json + OPENROUTER_MODEL apply */
+  }
 }
 
 function emptyToUndef(v: string | undefined): string | undefined {
