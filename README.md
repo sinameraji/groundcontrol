@@ -87,8 +87,11 @@ battery settings) is in [ops/setup.md](ops/setup.md).
 
 ## Conversations
 
-Each Discord thread keeps **one persistent sandbox** — its *cell*. Reply in a
-thread and the agent picks up where it left off: the repo clone, past reports,
+Each Discord thread keeps **one persistent sandbox** — its *cell*, and inside
+a thread you don't need to `@` anyone: a plain reply goes to the thread's
+agent (mention a *different* agent to bring it into the same workspace).
+Reply in a thread and the agent picks up where it left off: the repo clone,
+past reports,
 and any notes it made are still in the workspace, and recent thread messages
 are fed into the prompt, so follow-ups ("now compare that against X") resolve
 their references.

@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RunnerContext, RunnerOutcome } from "../types.js";
 import type { Hotcell, SandboxHandle } from "../hotcell.js";
-import { OPENCODE_SETUP, opencodeRunCommand, shellQuote } from "../hotcell.js";
+import {
+  ENSURE_OPENCODE,
+  OPENCODE_SETUP,
+  opencodeRunCommand,
+  shellQuote,
+} from "../hotcell.js";
 import { publishBundle } from "../github.js";
 import { artifactUrl } from "../files/links.js";
 
@@ -110,6 +115,16 @@ export async function runCodingMission(
   // exact base for "did it change something?" and for the bundle range —
   // immune to origin/HEAD being unset or the default branch not being "main".
   const initialSha = await headSha(sandbox, repoDir);
+
+  // Create-time setup is best-effort/async — guarantee the tool is actually
+  // there (a fresh sandbox's install takes ~30s) before invoking it.
+  const ensure = await sandbox.exec(ENSURE_OPENCODE);
+  if (ensure.exitCode !== 0) {
+    throw new Error(
+      `couldn't install opencode in the sandbox: ` +
+        tailOf(ensure.stderr || ensure.stdout, 400).trim()
+    );
+  }
 
   await ctx.setStatus("working on it — this can take a few minutes");
   const run = await sandbox.execStreaming(

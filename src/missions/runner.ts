@@ -118,6 +118,21 @@ export class MissionEngine implements Dispatcher {
     return false;
   }
 
+  async cellInfo(
+    threadId: string
+  ): Promise<{ agentName: string; repo?: string } | null> {
+    const cell = await this.cells.get(threadId);
+    if (cell) return { agentName: cell.agentName, repo: cell.repo };
+    // Cell may have been reset (cancel/janitor) — the thread still belongs to
+    // whichever agent ran its newest mission.
+    for (const m of await this.store.list()) {
+      if (m.threadId === threadId) {
+        return { agentName: m.agentName, repo: m.repo };
+      }
+    }
+    return null;
+  }
+
   async status(): Promise<{
     active: MissionRecord[];
     queued: MissionRecord[];

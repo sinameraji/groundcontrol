@@ -153,6 +153,15 @@ export interface Dispatcher {
   /** Cancel a queued or running mission. True if something was cancelled. */
   cancel(missionId: string): Promise<boolean>;
   status(): Promise<{ active: MissionRecord[]; queued: MissionRecord[] }>;
+  /**
+   * Which agent owns a mission thread (cell first, newest mission as
+   * fallback), plus the repo the thread has been working on — lets a plain
+   * un-mentioned reply inside a thread reach its agent. Null for threads we
+   * never ran a mission in.
+   */
+  cellInfo(
+    threadId: string
+  ): Promise<{ agentName: string; repo?: string } | null>;
 }
 
 /** The Discord side's surface, consumed by the engine to report progress. */

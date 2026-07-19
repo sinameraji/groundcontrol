@@ -2,7 +2,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, posix, resolve, sep } from "node:path";
 import type { RunnerContext, RunnerOutcome } from "../types.js";
 import type { Hotcell, SandboxHandle } from "../hotcell.js";
-import { OPENCODE_SETUP, opencodeRunCommand, shellQuote } from "../hotcell.js";
+import {
+  ENSURE_OPENCODE,
+  OPENCODE_SETUP,
+  opencodeRunCommand,
+  shellQuote,
+} from "../hotcell.js";
 import { artifactUrl } from "../files/links.js";
 
 /** Where the task contract tells the agent to leave its artifacts. */
@@ -70,6 +75,16 @@ export async function runResearchMission(
     taskFile,
     buildTask(agent.persona, mission.prompt, ctx.threadContext)
   );
+
+  // Create-time setup is best-effort/async — guarantee the tool is actually
+  // there (a fresh sandbox's install takes ~30s) before invoking it.
+  const ensure = await sandbox.exec(ENSURE_OPENCODE);
+  if (ensure.exitCode !== 0) {
+    throw new Error(
+      `couldn't install opencode in the sandbox: ` +
+        tailOf(ensure.stderr || ensure.stdout, 400).trim()
+    );
+  }
 
   await ctx.setStatus("digging in — this can take a few minutes");
   const run = await sandbox.execStreaming(

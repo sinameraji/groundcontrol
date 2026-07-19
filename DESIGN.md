@@ -109,6 +109,12 @@ just the address book).
 5. Reaping: the janitor destroys cells idle past `CELL_MAX_IDLE_DAYS`
    (default 30) and prunes their mappings.
 
+Inside a mission thread, a plain (un-mentioned) owner message goes to the
+thread's agent — no `@` needed; the conversation is already with it. An
+explicit `@mention` always wins and is how a *different* agent joins the
+thread (inheriting its cell workspace). Coding follow-ups inherit the
+thread's repo.
+
 Runner deltas: reuse `ctx.cellSandbox ?? createSandbox(… sleepAfterMs …)`;
 coding ensures the repo exists in a reused cell (`git clone` if missing,
 `fetch` if present); research archives the previous `/workspace/out` into

@@ -339,18 +339,27 @@ class Fleet implements BotFleet {
     if (message.author.bot) return;
     if (message.author.id !== this.cfg.ownerId) return;
     const me = client.user;
-    // Require an explicit @mention of THIS bot: a plain reply to one of its
-    // messages also lands in mentions.users (the reply-ping), and @everyone /
-    // role pings would otherwise summon every agent at once.
-    if (
-      !me ||
-      !message.mentions.has(me, {
-        ignoreRepliedUser: true,
-        ignoreEveryone: true,
-        ignoreRoles: true,
-      })
-    ) {
-      return;
+    if (!me) return;
+    // An explicit @mention of THIS bot always wins (reply-pings, @everyone
+    // and role pings deliberately don't count — they'd summon every agent).
+    const mentioned = message.mentions.has(me, {
+      ignoreRepliedUser: true,
+      ignoreEveryone: true,
+      ignoreRoles: true,
+    });
+    // Without a mention, a message still reaches the agent that OWNS the
+    // mission thread it was posted in — inside a thread the conversation IS
+    // with that agent, so no @ is needed. Messages that mention someone else
+    // are left to whoever was mentioned.
+    let threadRepo: string | undefined;
+    if (!mentioned) {
+      if (!message.channel.isThread()) return;
+      if (/<@!?\d+>/.test(message.content)) return;
+      const info = await this.dispatcher
+        .cellInfo(message.channel.id)
+        .catch(() => null);
+      if (!info || info.agentName !== agent.name) return;
+      threadRepo = info.repo;
     }
 
     let prompt = message.content
@@ -379,6 +388,9 @@ class Fleet implements BotFleet {
           .replace(match[0], " ")
           .replace(/[ \t]{2,}/g, " ")
           .trim();
+      } else if (threadRepo) {
+        // Follow-up in a thread that already works on a repo — inherit it.
+        repo = threadRepo;
       } else if (this.cfg.defaultRepo) {
         repo = this.cfg.defaultRepo;
       } else {

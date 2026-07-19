@@ -251,6 +251,21 @@ export const OPENCODE_SETUP: string =
   `"$OPENROUTER_BASE_URL" "$OPENROUTER_API_KEY" > ~/.config/opencode/opencode.json`;
 
 /**
+ * Idempotent pre-run guard: hotcell's create-time `setup` is best-effort and
+ * asynchronous (a fresh sandbox's npm install takes ~30s), so runners MUST
+ * exec this before `opencode run` — it waits for / completes the install
+ * with VISIBLE errors and rewrites the provider config from the sandbox's
+ * current egress env. Exit code != 0 → opencode is genuinely unavailable.
+ */
+export const ENSURE_OPENCODE: string = [
+  `command -v opencode >/dev/null 2>&1 || npm i -g opencode-ai`,
+  `mkdir -p ~/.config/opencode`,
+  `printf '{"provider":{"openrouter":{"options":{"baseURL":"%s/v1","apiKey":"%s"}}}}' ` +
+    `"$OPENROUTER_BASE_URL" "$OPENROUTER_API_KEY" > ~/.config/opencode/opencode.json`,
+  `command -v opencode`,
+].join("\n");
+
+/**
  * Headless OpenCode invocation. The task prompt is NEVER interpolated here —
  * it must already sit in `taskFile` inside the sandbox (written via
  * writeFile); the command reads it with $(cat …).
