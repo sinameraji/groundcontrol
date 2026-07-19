@@ -64,6 +64,7 @@ install_plist() {
 
 install_plist "$SCRIPT_DIR/com.groundcontrol.orchestrator.plist"
 install_plist "$SCRIPT_DIR/com.groundcontrol.janitor.plist"
+install_plist "$SCRIPT_DIR/com.groundcontrol.awake.plist"
 
 if [ -n "$HOTCELL_BIN" ]; then
   install_plist "$SCRIPT_DIR/com.groundcontrol.hotcelld.plist"
@@ -75,7 +76,7 @@ fi
 # ── status ─────────────────────────────────────────────────────────────────
 echo
 echo "status:"
-for label in com.groundcontrol.orchestrator com.groundcontrol.hotcelld com.groundcontrol.janitor; do
+for label in com.groundcontrol.orchestrator com.groundcontrol.hotcelld com.groundcontrol.janitor com.groundcontrol.awake; do
   if launchctl print "$GUI_DOMAIN/$label" >/dev/null 2>&1; then
     echo "  $label  loaded"
   else

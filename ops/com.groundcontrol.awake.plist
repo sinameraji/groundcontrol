@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.groundcontrol.awake</string>
+  <!--
+    caffeinate -s prevents system sleep while on AC power — the no-sudo way
+    to keep the server awake. On battery, normal sleep applies (deliberate:
+    an unplugged laptop should not cook its battery for the bots).
+    Note launchd user agents start at LOGIN: after a reboot, the machine
+    must log in once (or run `sudo pmset -c sleep 0` for the system-level
+    equivalent that works pre-login).
+  -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-s</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>
