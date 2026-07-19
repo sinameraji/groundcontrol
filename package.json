@@ -1,0 +1,32 @@
+{
+  "name": "groundcontrol",
+  "version": "0.1.0",
+  "description": "Discord-driven mission control for AI agents running in hotcell sandboxes on your own hardware",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "bin": {
+    "groundcontrol": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts start",
+    "start": "node dist/index.js start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "register": "tsx src/index.ts register-commands",
+    "janitor": "tsx src/index.ts janitor"
+  },
+  "dependencies": {
+    "@hotcell/sdk": "^0.1.7",
+    "discord.js": "^14.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

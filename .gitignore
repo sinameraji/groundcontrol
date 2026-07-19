@@ -1,0 +1,14 @@
+# secrets — never commit
+.env
+config/agents.json
+
+# build + deps
+node_modules/
+dist/
+
+# runtime data (missions, artifacts)
+data/
+
+# misc
+*.log
+.DS_Store
