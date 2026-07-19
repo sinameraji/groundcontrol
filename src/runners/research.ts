@@ -33,7 +33,7 @@ const ARCHIVE_OUT_CMD =
  *  2. reused cell: archive the previous /workspace/out into
  *     /workspace/history/<timestamp>/ before anything else.
  *  3. prompt contract: full report → /workspace/out/report.md,
- *     ≤900-char summary → /workspace/out/summary.md, extras in /workspace/out/
+ *     ≤1500-char summary → /workspace/out/summary.md, extras in /workspace/out/
  *  4. run opencodeRunCommand with dir=/workspace; transcript saved.
  *  5. copy everything under /workspace/out/ into <missionDir>/ (binary-safe).
  *  6. result.files = relative artifact paths, result.links via
@@ -167,8 +167,15 @@ function buildTask(
   parts.push(`# Task\n\n${prompt.trim()}`);
   parts.push(
     `# Output contract\n\n` +
-      `- Write your full report (Markdown) to ${OUT_DIR}/report.md.\n` +
-      `- Write a summary of AT MOST 900 characters to ${OUT_DIR}/summary.md.\n` +
+      `- Write your full report (Markdown) to ${OUT_DIR}/report.md. Make it ` +
+      `as deep as the question deserves: structured sections, concrete ` +
+      `evidence and numbers, trade-offs, and a source URL for every claim. ` +
+      `Never compress the report for brevity — length is welcome when it ` +
+      `carries substance; only truly simple questions deserve short reports.\n` +
+      `- Write a summary of AT MOST 1500 characters to ${OUT_DIR}/summary.md. ` +
+      `It is posted directly into the chat as your answer, so lead with the ` +
+      `conclusion, include the key numbers/caveats, and make it read well on ` +
+      `its own — the report is one click away for the rest.\n` +
       `- Put any extra artifacts (data, tables, scripts) under ${OUT_DIR}/.\n` +
       `- Only files under ${OUT_DIR}/ are collected; anything else is lost.\n` +
       `- This workspace persists across this conversation — ` +

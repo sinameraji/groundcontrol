@@ -66,7 +66,7 @@ Serve), and **only the owner's Discord user id is obeyed**.
 
 1. `createSandbox({ egress: true, spendCapUsd, setup: [OPENCODE_SETUP] })` — no repo.
 2. Task contract in the prompt: write the full report to
-   `/workspace/out/report.md`, a ≤900-char `summary.md`, and any extra
+   `/workspace/out/report.md`, a ≤1500-char `summary.md`, and any extra
    artifacts into `/workspace/out/`.
 3. Same headless OpenCode run.
 4. Everything under `/workspace/out/` is copied to the mission folder
